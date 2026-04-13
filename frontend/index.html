@@ -1390,7 +1390,7 @@
     const app = createApp({
         setup() {
             // ========== 状态定义 ==========
-            let playLock = false;
+
 
             // 认证状态
             const isAuthenticated = ref(false);
@@ -1480,6 +1480,8 @@
                     if (audio.value) audio.value.currentTime = (value / 100) * duration.value;
                 }
             });
+
+            let playLock = false;
 
             // ========== 工具函数 ==========
 
@@ -1620,6 +1622,8 @@
             // ========== 认证函数 ==========
 
             const logout = () => {
+                console.log('========== logout 开始 ==========');
+                console.log('audio.value:', audio.value);
                 stopSpectrum();
                 isAuthenticated.value = false;
                 user.value = null;
@@ -1633,6 +1637,8 @@
                     if (currentBlobUrl.value) URL.revokeObjectURL(currentBlobUrl.value);
                 }
                 stopProgressSaving();
+                console.log('========== logout 结束 ==========');
+
             };
 
             const fetchUser = async () => {
@@ -1975,62 +1981,75 @@
             };
 
             const playTrack = async (track) => {
-                console.log('Playing track:', track.title);
+                console.log('========== playTrack 开始 ==========');
+                console.log('歌曲:', track.title, '格式:', track.format);
+                console.log('当前 audio.value:', audio.value);
+                console.log('当前 audio.value.src:', audio.value?.src);
+
+                // 防止并发播放
                 if (playLock) {
                     console.log('Play locked, waiting...');
                     return;
                 }
                 playLock = true;
+
                 currentTrack.value = track;
                 stopProgressSaving();
-                stopSpectrum();  // 停止之前的频谱
+                stopSpectrum();
 
                 const useTranscode = track.format === 'flac';
                 if (useTranscode) isTranscoding.value = true;
 
                 try {
-                    // 停止当前播放并清理
-                    if (audio.value) {
-                        // 先移除所有事件监听，避免冲突
-                        audio.value.onloadedmetadata = null;
-                        audio.value.ontimeupdate = null;
-                        audio.value.onended = null;
-                        audio.value.onplay = null;
-                        audio.value.onpause = null;
-                        audio.value.onerror = null;
-
-                        // 暂停并重置
-                        audio.value.pause();
-                        audio.value.currentTime = 0;
-
-                        // 释放旧的 Blob URL
-                        if (currentBlobUrl.value) {
-                            URL.revokeObjectURL(currentBlobUrl.value);
-                            currentBlobUrl.value = null;
-                        }
-                    }
+                    // 保存旧的音频引用
+                    const oldAudio = audio.value;
+                    const oldBlobUrl = currentBlobUrl.value;
 
                     // 获取音频流
                     const r = await apiFetch(`/media/stream/${track.id}${useTranscode ? '?transcode=true' : ''}`);
                     if (!r.ok) throw new Error('Stream failed');
 
                     const blob = await r.blob();
-                    currentBlobUrl.value = URL.createObjectURL(blob);
+                    const newBlobUrl = URL.createObjectURL(blob);
 
                     // 创建新的 Audio 对象
-                    audio.value = new Audio();
-                    audio.value.volume = volume.value;
+                    const newAudio = new Audio();
+                    newAudio.volume = volume.value;
+                    console.log('📦 创建新音频对象');
 
-                    // 设置事件监听
-                    audio.value.addEventListener('loadedmetadata', () => {
-                        duration.value = audio.value.duration;
+                    // ========== 事件监听 ==========
+                    newAudio.addEventListener('loadstart', () => {
+                        console.log('📥 loadstart - 开始加载音频');
                     });
 
-                    audio.value.addEventListener('timeupdate', () => {
-                        currentTime.value = audio.value.currentTime;
+                    newAudio.addEventListener('loadedmetadata', () => {
+                        console.log('📊 loadedmetadata - 元数据加载完成, duration:', newAudio.duration);
+                        duration.value = newAudio.duration;
                     });
 
-                    audio.value.addEventListener('ended', () => {
+                    newAudio.addEventListener('loadeddata', () => {
+                        console.log('✅ loadeddata - 数据加载完成');
+                    });
+
+                    newAudio.addEventListener('canplay', () => {
+                        console.log('🎵 canplay - 可以开始播放');
+                    });
+
+                    newAudio.addEventListener('canplaythrough', () => {
+                        console.log('🎵 canplaythrough - 可以流畅播放');
+                    });
+
+                    newAudio.addEventListener('playing', () => {
+                        console.log('▶️ playing - 正在播放');
+                        isPlaying.value = true;
+                    });
+
+                    newAudio.addEventListener('timeupdate', () => {
+                        currentTime.value = newAudio.currentTime;
+                    });
+
+                    newAudio.addEventListener('ended', () => {
+                        console.log('🏁 ended - 播放结束');
                         sendEvent('play_end');
                         isPlaying.value = false;
                         stopProgressSaving();
@@ -2038,66 +2057,118 @@
                         nextTrack();
                     });
 
-                    audio.value.addEventListener('play', () => {
+                    newAudio.addEventListener('play', () => {
+                        console.log('▶️ play - 播放事件');
                         isPlaying.value = true;
                         isTranscoding.value = false;
                         sendEvent('play_start', track.id);
                         startProgressSaving();
-                        initAudioContext();  // 初始化频谱
+
+                        setTimeout(() => {
+                            if (isPlaying.value) {
+                                initAudioContext();
+                            }
+                        }, 50);
                     });
 
-                    audio.value.addEventListener('pause', () => {
+                    newAudio.addEventListener('pause', () => {
+                        console.log('⏸️ pause - 已暂停, currentTime:', newAudio.currentTime);
                         sendEvent('pause');
                         saveCurrentProgress();
                     });
 
-                    audio.value.addEventListener('error', (e) => {
-                        console.error('Audio error:', audio.value.error);
+                    newAudio.addEventListener('waiting', () => {
+                        console.log('⏳ waiting - 等待数据...');
+                    });
+
+                    newAudio.addEventListener('stalled', () => {
+                        console.log('⚠️ stalled - 加载停滞');
+                    });
+
+                    newAudio.addEventListener('suspend', () => {
+                        console.log('⏸️ suspend - 加载暂停');
+                    });
+
+                    newAudio.addEventListener('abort', () => {
+                        console.log('❌ abort - 加载中止');
+                    });
+
+                    newAudio.addEventListener('error', (e) => {
+                        console.error('❌ error - 音频错误:', newAudio.error);
+                        console.error('错误代码:', newAudio.error?.code);
+                        console.error('错误信息:', newAudio.error?.message);
                         isTranscoding.value = false;
                         stopProgressSaving();
                     });
+                    // ========== 事件监听结束 ==========
 
                     // 设置音频源
-                    audio.value.src = currentBlobUrl.value;
+                    newAudio.src = newBlobUrl;
+                    console.log('📎 设置音频 src:', newBlobUrl);
 
                     // 等待音频可以播放
                     await new Promise((resolve, reject) => {
                         const onCanPlay = () => {
-                            audio.value.removeEventListener('canplay', onCanPlay);
-                            audio.value.removeEventListener('error', onError);
+                            newAudio.removeEventListener('canplay', onCanPlay);
+                            newAudio.removeEventListener('error', onError);
                             resolve();
                         };
-                        const onError = (e) => {
-                            audio.value.removeEventListener('canplay', onCanPlay);
-                            audio.value.removeEventListener('error', onError);
+                        const onError = () => {
+                            newAudio.removeEventListener('canplay', onCanPlay);
+                            newAudio.removeEventListener('error', onError);
                             reject(new Error('Failed to load audio'));
                         };
-                        audio.value.addEventListener('canplay', onCanPlay);
-                        audio.value.addEventListener('error', onError);
+                        newAudio.addEventListener('canplay', onCanPlay);
+                        newAudio.addEventListener('error', onError);
 
-                        // 超时处理
                         setTimeout(() => {
-                            audio.value.removeEventListener('canplay', onCanPlay);
-                            audio.value.removeEventListener('error', onError);
+                            newAudio.removeEventListener('canplay', onCanPlay);
+                            newAudio.removeEventListener('error', onError);
                             reject(new Error('Timeout loading audio'));
                         }, 10000);
                     });
 
+                    // 切换到新音频
+                    audio.value = newAudio;
+                    window.currentAudio = newAudio;
+                    currentBlobUrl.value = newBlobUrl;
+                    console.log('💾 保存音频引用');
+
                     // 播放
-                    await audio.value.play();
+                    console.log('🎵 准备播放, src:', newAudio.src);
+                    console.log('readyState:', newAudio.readyState);
+
+                    await newAudio.play();
+                    console.log('✅ playTrack 播放成功');
+
                     isPlaying.value = true;
                     isTranscoding.value = false;
+
+                    // 播放成功后再清理旧的音频资源
+                    if (oldAudio) {
+                        setTimeout(() => {
+                            try {
+                                oldAudio.pause();
+                            } catch (e) {
+                            }
+                        }, 100);
+                    }
+
+                    if (oldBlobUrl) {
+                        setTimeout(() => {
+                            URL.revokeObjectURL(oldBlobUrl);
+                        }, 200);
+                    }
 
                     if (showLyrics.value) loadLyrics();
 
                 } catch (e) {
-                    console.error('Play error:', e);
+                    console.error('❌ Play error:', e);
                     isTranscoding.value = false;
                     stopProgressSaving();
 
-                    // 如果是 AbortError，不显示错误提示（通常是用户主动切换歌曲）
                     if (e.name === 'AbortError') {
-                        console.log('Playback aborted, likely user switched tracks');
+                        console.log('Playback aborted');
                     } else {
                         if (confirm(`播放失败: ${e.message}\n是否下载文件？`)) {
                             await downloadTrack(track);
@@ -2105,6 +2176,7 @@
                     }
                 } finally {
                     playLock = false;
+                    console.log('========== playTrack 结束 ==========');
                 }
             };
             const playTrackFromList = (track) => {
@@ -2119,10 +2191,51 @@
             };
 
             const togglePlay = () => {
-                if (!audio.value) return;
-                isPlaying.value ? (audio.value.pause(), isPlaying.value = false) : (audio.value.play(), isPlaying.value = true);
-            };
+                console.log('========== togglePlay 开始 ==========');
+                console.log('audio.value 是否存在:', !!audio.value);
+                console.log('audio.value.src:', audio.value?.src);
+                console.log('audio.value.paused:', audio.value?.paused);
+                console.log('isPlaying.value:', isPlaying.value);
+                console.log('currentTrack.value:', currentTrack.value?.title);
 
+                const a = audio.value;
+                if (!a) {
+                    console.error('❌ audio.value 为 null 或 undefined');
+                    return;
+                }
+
+                if (a.paused) {
+                    console.log('▶️ 尝试播放...');
+
+                    // 关键：恢复 AudioContext
+                    if (audioContext && audioContext.state === 'suspended') {
+                        console.log('▶️ 恢复 AudioContext');
+                        audioContext.resume();
+                    }
+
+                    const playPromise = a.play();
+
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log('✅ 播放成功');
+                            isPlaying.value = true;
+                        }).catch(error => {
+                            console.error('❌ 播放失败:', error);
+                            console.error('错误类型:', error.name);
+                            console.error('错误信息:', error.message);
+                            console.log('当前 audio.src:', a.src);
+                            console.log('当前 audio.readyState:', a.readyState);
+                            console.log('当前 audio.networkState:', a.networkState);
+                            console.log('当前 audio.error:', a.error);
+                        });
+                    }
+                } else {
+                    console.log('⏸️ 暂停播放');
+                    a.pause();
+                    isPlaying.value = false;
+                }
+                console.log('========== togglePlay 结束 ==========');
+            };
             const nextTrack = () => {
                 if (queue.value.length === 0) return;
 
@@ -2164,6 +2277,9 @@
             };
 
             const stopTrack = () => {
+                console.log('========== stopTrack 开始 ==========');
+                console.log('audio.value:', audio.value);
+                console.log('audio.value.src:', audio.value?.src);
                 if (audio.value) {
                     saveCurrentProgress();
                     sendEvent('play_end');
@@ -2172,6 +2288,7 @@
                     isPlaying.value = false;
                     stopProgressSaving();
                     stopSpectrum();
+                    // 不要清空 src！只暂停和重置位置
                 }
             };
 
@@ -2329,15 +2446,28 @@
             });
 
             onUnmounted(() => {
+                console.log('========== onUnmounted 开始 ==========');
+                console.log('audio.value:', audio.value);
                 if (audio.value) {
                     saveCurrentProgress();
                     audio.value.pause();
+                    audio.value.src = '';
                 }
-                if (currentBlobUrl.value) URL.revokeObjectURL(currentBlobUrl.value);
+                if (currentBlobUrl.value) {
+                    URL.revokeObjectURL(currentBlobUrl.value);
+                }
                 stopProgressSaving();
+                stopSpectrum();
+
+                // 完全关闭音频上下文
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+
                 window.removeEventListener('keydown', handleKeydown);
                 window.removeEventListener('resize', handleResize);
-                stopSpectrum();
+                console.log('========== onUnmounted 结束 ==========');
             });
 
             // 更新进度条背景
@@ -2354,33 +2484,37 @@
             let analyser = null;
             let source = null;
             let spectrumAnimationId = null;
-
+            let isAudioContextInitialized = false;
+            let hasInitializedSpectrum = false;
             // 初始化音频上下文
             const initAudioContext = () => {
+                if (hasInitializedSpectrum) {
+                    // 已经初始化过，只需要绘制频谱
+                    drawSpectrum();
+                    return;
+                }
+
                 if (!audio.value) return;
+                if (!audio.value.src || audio.value.src === window.location.href) return;
 
                 try {
-                    // 如果已经有上下文，先关闭
-                    if (audioContext) {
-                        audioContext.close();
-                    }
-
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     analyser = audioContext.createAnalyser();
                     analyser.fftSize = 256;
 
-                    // 连接音频源
                     source = audioContext.createMediaElementSource(audio.value);
                     source.connect(analyser);
                     analyser.connect(audioContext.destination);
 
-                    // 开始绘制频谱
+                    hasInitializedSpectrum = true;
+                    console.log('✅ 频谱初始化成功');
+
                     drawSpectrum();
                 } catch (e) {
-                    console.error('Failed to initialize audio context:', e);
+                    console.log('频谱已存在或初始化失败:', e);
+                    hasInitializedSpectrum = true;  // 标记为已初始化，避免重复尝试
                 }
             };
-
             // 绘制频谱
             const drawSpectrum = () => {
                 if (!spectrumCanvas.value || !analyser) {
@@ -2447,12 +2581,20 @@
                     cancelAnimationFrame(spectrumAnimationId);
                     spectrumAnimationId = null;
                 }
-                if (audioContext) {
-                    audioContext.close();
-                    audioContext = null;
-                    analyser = null;
+
+                if (source) {
+                    try {
+                        source.disconnect();
+                    } catch (e) {
+                    }
                     source = null;
                 }
+
+                if (analyser) {
+                    analyser = null;
+                }
+
+                // 不要关闭或挂起 audioContext！只清理画布
                 if (spectrumCanvas.value) {
                     const ctx = spectrumCanvas.value.getContext('2d');
                     ctx.clearRect(0, 0, spectrumCanvas.value.width, spectrumCanvas.value.height);
