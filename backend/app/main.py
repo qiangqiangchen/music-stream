@@ -85,16 +85,19 @@ app.add_middleware(
     allow_origins=[
         settings.FRONTEND_ORIGIN,
         "http://localhost:5500",
-        "http://127.0.0.1:5500"
+        "http://127.0.0.1:5500",
+        "http://*:5500",  # 允许任何来源的 5500 端口
+        "http://*:5501",
+        "*"  # 开发环境可以暂时允许所有
     ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 # 安全头中间件
 from starlette.middleware.base import BaseHTTPMiddleware
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to responses."""
@@ -108,7 +111,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
-
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")

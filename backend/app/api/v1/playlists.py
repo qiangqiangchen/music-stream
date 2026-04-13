@@ -360,14 +360,6 @@ async def reorder_playlist_tracks(
 
     # 更新位置
     for idx, track_id in enumerate(data.track_ids):
-        await db.execute(
-            select(PlaylistItem).where(
-                and_(
-                    PlaylistItem.playlist_id == playlist_id,
-                    PlaylistItem.track_id == track_id
-                )
-            )
-        )
         result = await db.execute(
             select(PlaylistItem).where(
                 and_(
@@ -380,9 +372,7 @@ async def reorder_playlist_tracks(
         if item:
             item.position = idx
 
-    # 更新播放列表时间
     playlist.updated_at = datetime.utcnow()
-
     await db.commit()
 
     return {"message": "Playlist reordered"}

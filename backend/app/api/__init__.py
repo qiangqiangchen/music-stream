@@ -1,7 +1,7 @@
 """API router setup."""
 from fastapi import APIRouter
 from app.api.v1 import auth, tracks, media, lyrics, analytics, library, albums, artists, \
-    system, admin, playlists, favorites, recent
+    system, admin, playlists, favorites, recent, progress
 
 api_router = APIRouter()
 
@@ -18,3 +18,4 @@ api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(playlists.router, prefix="/playlists", tags=["Playlists"])
 api_router.include_router(favorites.router, prefix="/favorites", tags=["Favorites"])
 api_router.include_router(recent.router, prefix="/recent", tags=["Recent"])
+api_router.include_router(progress.router, prefix="/progress", tags=["Progress"])

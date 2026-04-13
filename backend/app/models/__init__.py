@@ -7,5 +7,6 @@ from app.models.playlist import Playlist, PlaylistItem
 from app.models.favorite import Favorite
 from app.models.recent_play import RecentPlay
 from app.models.login_attempt import LoginAttempt
+from app.models.playback_progress import PlaybackProgress
 
 __all__ = ["User", "Track", "Lyric", "Event"]
