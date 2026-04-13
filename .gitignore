@@ -1,0 +1,50 @@
+# 创建 .gitignore 文件
+echo "# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Cache
+backend/data/cache/
+backend/data/transcode_cache/
+*.cache
+
+# Media files (可选，如果不想提交音乐文件)
+media/
+# 如果只想保留目录结构：
+!media/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+backend/bin/
+
+# Frontend
+frontend/node_modules/
+" > .gitignore

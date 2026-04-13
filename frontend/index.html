@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音乐流媒体</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            padding-bottom: 120px;
+            background-color: #f8f9fa;
+        }
+
+        .player-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, #1a1a1a, #2a2a2a);
+            border-top: 1px solid #3a3a3a;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        .table-hover tbody tr {
+            cursor: pointer;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: rgba(13, 110, 253, 0.1);
+        }
+
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .card {
+            border-radius: 15px;
+            border: none;
+        }
+
+        .lyrics-container {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .lyrics-line {
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .lyrics-line.active {
+            color: #0d6efd !important;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .cover-img {
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" v-if="isAuthenticated">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-vinyl-fill"></i> Music Stream
+            </a>
+            <div class="navbar-nav ms-auto">
+                    <span class="navbar-text me-3">
+                        欢迎, {{ user?.display_name || user?.username }}
+                    </span>
+                <button class="btn btn-outline-light btn-sm" @click="logout">
+                    <i class="bi bi-box-arrow-right"></i> 登出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 登录页面 -->
+    <div v-if="!isAuthenticated && !showRegister" class="login-container">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-5">
+                    <div class="card shadow-lg">
+                        <div class="card-body p-5">
+                            <h3 class="text-center mb-4">
+                                <i class="bi bi-vinyl-fill"></i> Music Stream
+                            </h3>
+                            <h5 class="text-center text-muted mb-4">用户登录</h5>
+
+                            <div v-if="error" class="alert alert-danger">{{ error }}</div>
+
+                            <form @submit.prevent="handleLogin">
+                                <div class="mb-3">
+                                    <label class="form-label">用户名</label>
+                                    <input type="text" class="form-control" v-model="loginForm.username" required
+                                           autofocus>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">密码</label>
+                                    <input type="password" class="form-control" v-model="loginForm.password" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" :disabled="loading">
+                                    <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
+                                    {{ loading ? '登录中...' : '登录' }}
+                                </button>
+                            </form>
+
+                            <div class="text-center mt-3">
+                                <a href="#" @click.prevent="showRegister = true">还没有账号？立即注册</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 注册页面 -->
+    <div v-if="!isAuthenticated && showRegister" class="login-container">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-5">
+                    <div class="card shadow-lg">
+                        <div class="card-body p-5">
+                            <h3 class="text-center mb-4">
+                                <i class="bi bi-person-plus"></i> 用户注册
+                            </h3>
+
+                            <div v-if="error" class="alert alert-danger">{{ error }}</div>
+                            <div v-if="success" class="alert alert-success">{{ success }}</div>
+
+                            <form @submit.prevent="handleRegister">
+                                <div class="mb-3">
+                                    <label class="form-label">邮箱</label>
+                                    <input type="email" class="form-control" v-model="registerForm.email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">用户名</label>
+                                    <input type="text" class="form-control" v-model="registerForm.username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">显示名称</label>
+                                    <input type="text" class="form-control" v-model="registerForm.display_name">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">密码</label>
+                                    <input type="password" class="form-control" v-model="registerForm.password" required
+                                           minlength="8">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">确认密码</label>
+                                    <input type="password" class="form-control" v-model="registerForm.confirm_password"
+                                           required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" :disabled="loading">
+                                    <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
+                                    {{ loading ? '注册中...' : '注册' }}
+                                </button>
+                            </form>
+
+                            <div class="text-center mt-3">
+                                <a href="#" @click.prevent="showRegister = false">返回登录</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div v-if="isAuthenticated" class="container-fluid mt-3">
+        <!-- 导航标签 -->
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'tracks' }" @click="activeTab = 'tracks'" href="#">
+                    <i class="bi bi-music-note-list"></i> 歌曲
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'albums' }"
+                   @click="activeTab = 'albums'; loadAlbums()" href="#">
+                    <i class="bi bi-disc"></i> 专辑
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'artists' }"
+                   @click="activeTab = 'artists'; loadArtists()" href="#">
+                    <i class="bi bi-person"></i> 艺术家
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'playlists' }"
+                   @click="activeTab = 'playlists'; loadPlaylists()" href="#">
+                    <i class="bi bi-list-ul"></i> 播放列表
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'favorites' }"
+                   @click="activeTab = 'favorites'; loadAllFavorites()" href="#">
+                    <i class="bi bi-heart"></i> 收藏
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'recent' }"
+                   @click="activeTab = 'recent'; loadRecentPlays()" href="#">
+                    <i class="bi bi-clock-history"></i> 最近播放
+                </a>
+            </li>
+            <li class="nav-item" v-if="user?.role === 'admin'">
+                <a class="nav-link" :class="{ active: activeTab === 'admin' }"
+                   @click="activeTab = 'admin'; loadAdminStats()" href="#">
+                    <i class="bi bi-bar-chart"></i> 管理
+                </a>
+            </li>
+        </ul>
+
+        <!-- 搜索栏 -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <input type="text" class="form-control" placeholder="搜索..." v-model="searchQuery"
+                       @input="handleSearch">
+            </div>
+            <div class="col-md-6 text-end">
+                <button class="btn btn-success" @click="scanLibrary" v-if="user?.role === 'admin'">
+                    <i class="bi bi-arrow-repeat"></i> 扫描媒体库
+                </button>
+            </div>
+        </div>
+
+        <!-- 歌曲列表 -->
+        <div v-if="activeTab === 'tracks'">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                    <tr>
+                        <th style="width: 50px">#</th>
+                        <th>标题</th>
+                        <th>艺术家</th>
+                        <th>专辑</th>
+                        <th style="width: 100px">时长</th>
+                        <th style="width: 150px">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(track, index) in tracks" :key="track.id">
+                        <td>{{ index + 1 }}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img :src="getCoverUrl(track.id)" class="me-2 cover-img"
+                                     style="width: 40px; height: 40px; object-fit: cover;" @error="handleImageError">
+                                {{ track.title }}
+                            </div>
+                        </td>
+                        <td>{{ track.artist || '未知艺术家' }}</td>
+                        <td>{{ track.album || '未知专辑' }}</td>
+                        <td>{{ formatDuration(track.duration) }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" @click="playTrack(track)" title="播放">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" @click="downloadTrack(track)" title="下载">
+                                <i class="bi bi-download"></i>
+                            </button>
+
+                            <!-- 收藏按钮 -->
+                            <button class="btn btn-sm"
+                                    :class="isFavorited(track.id) ? 'btn-danger' : 'btn-outline-danger'"
+                                    @click="toggleFavorite(track)"
+                                    :title="isFavorited(track.id) ? '取消收藏' : '收藏'">
+                                <i :class="isFavorited(track.id) ? 'bi-heart-fill' : 'bi-heart'"></i>
+                            </button>
+
+                            <!-- 添加到播放列表 -->
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-outline-info dropdown-toggle"
+                                        type="button"
+                                        :id="'dropdown-' + track.id"
+                                        data-bs-toggle="dropdown"
+                                        @click="pendingTrack = track">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                                <ul class="dropdown-menu" :aria-labelledby="'dropdown-' + track.id">
+                                    <li v-if="playlists.length === 0">
+                                        <span class="dropdown-item text-muted">暂无播放列表</span>
+                                    </li>
+                                    <li v-for="pl in playlists" :key="pl.id">
+                                        <a class="dropdown-item" href="#" @click.prevent="addToPlaylist(pl.id)">
+                                            {{ pl.name }}
+                                            <span class="badge bg-secondary rounded-pill">{{ pl.track_count }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="#" @click.prevent.stop="quickCreatePlaylist">
+                                            <i class="bi bi-plus"></i> 新建播放列表
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 专辑列表 -->
+        <div v-if="activeTab === 'albums'">
+            <div class="row">
+                <div class="col-md-3 mb-3" v-for="album in albums" :key="album.name + album.artist">
+                    <div class="card h-100" style="cursor: pointer;" @click="viewAlbum(album)">
+                        <img :src="album.cover_url" class="card-img-top" style="height: 200px; object-fit: cover;"
+                             @error="handleImageError">
+                        <div class="card-body">
+                            <h6 class="card-title">{{ album.name }}</h6>
+                            <p class="card-text text-muted">{{ album.artist }}</p>
+                            <small>{{ album.track_count }} 首歌曲</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 艺术家列表 -->
+        <div v-if="activeTab === 'artists'">
+            <div class="row">
+                <div class="col-md-3 mb-3" v-for="artist in artists" :key="artist.name">
+                    <div class="card h-100" style="cursor: pointer;" @click="viewArtist(artist)">
+                        <img :src="artist.cover_url" class="card-img-top rounded-circle mx-auto mt-3"
+                             style="height: 150px; width: 150px; object-fit: cover;" @error="handleImageError">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">{{ artist.name }}</h6>
+                            <p class="card-text text-muted">
+                                {{ artist.album_count }} 张专辑 · {{ artist.track_count }} 首歌曲
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 播放列表 -->
+        <div v-if="activeTab === 'playlists'">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3>我的播放列表</h3>
+                <button class="btn btn-primary" @click="showCreatePlaylist = true">
+                    <i class="bi bi-plus"></i> 新建播放列表
+                </button>
+            </div>
+
+            <!-- 创建播放列表模态框 -->
+            <div class="modal fade" :class="{ 'show d-block': showCreatePlaylist }" v-if="showCreatePlaylist"
+                 tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">新建播放列表</h5>
+                            <button type="button" class="btn-close" @click="showCreatePlaylist = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" v-model="newPlaylist.name"
+                                       placeholder="输入播放列表名称" autofocus>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">描述</label>
+                                <textarea class="form-control" v-model="newPlaylist.description" rows="2"
+                                          placeholder="可选"></textarea>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" v-model="newPlaylist.is_public"
+                                       id="publicCheck">
+                                <label class="form-check-label" for="publicCheck">公开（其他用户可见）</label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="showCreatePlaylist = false">取消
+                            </button>
+                            <button type="button" class="btn btn-primary" @click="createPlaylist">创建</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 模态框背景 -->
+            <div class="modal-backdrop fade show" v-if="showCreatePlaylist"></div>
+
+            <!-- 播放列表网格 -->
+            <div class="row">
+                <div class="col-md-4 mb-3" v-for="pl in playlists" :key="pl.id">
+                    <div class="card h-100" style="cursor: pointer;" @click="viewPlaylist(pl)">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="bg-primary rounded p-3 me-3">
+                                    <i class="bi bi-music-note-list text-white" style="font-size: 2rem;"></i>
+                                </div>
+                                <div>
+                                    <h5 class="card-title mb-1">{{ pl.name }}</h5>
+                                    <!-- 确保使用 track_count 字段 -->
+                                    <p class="card-text text-muted small">{{ pl.track_count || 0 }} 首歌曲</p>
+                                </div>
+                            </div>
+                            <p class="card-text text-muted small">{{ pl.description || '暂无描述' }}</p>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <small class="text-muted">更新于 {{ formatDate(pl.updated_at) }}</small>
+                            <div class="float-end">
+                                <button class="btn btn-sm btn-outline-danger" @click.stop="deletePlaylist(pl)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 播放列表详情视图 -->
+            <div v-if="currentPlaylist">
+                <div class="d-flex align-items-center mb-3">
+                    <button class="btn btn-outline-secondary me-2" @click="currentPlaylist = null">
+                        <i class="bi bi-arrow-left"></i> 返回
+                    </button>
+                    <h4 class="mb-0">{{ currentPlaylist.name }}</h4>
+                    <button class="btn btn-success ms-auto" @click="playPlaylist(currentPlaylist)">
+                        <i class="bi bi-play-fill"></i> 播放全部
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>标题</th>
+                            <th>艺术家</th>
+                            <th>专辑</th>
+                            <th>时长</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr v-for="(track, index) in playlistTracks" :key="track.id"
+                            @dblclick="playFromPlaylist(track)">
+                            <td>{{ index + 1 }}</td>
+                            <td>{{ track.title }}</td>
+                            <td>{{ track.artist }}</td>
+                            <td>{{ track.album }}</td>
+                            <td>{{ formatDuration(track.duration) }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" @click="playFromPlaylist(track)">
+                                    <i class="bi bi-play-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @click="removeFromPlaylist(track)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 收藏列表 -->
+        <div v-if="activeTab === 'favorites'">
+            <h3 class="mb-3"><i class="bi bi-heart-fill text-danger"></i> 我的收藏</h3>
+
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>标题</th>
+                        <th>艺术家</th>
+                        <th>专辑</th>
+                        <th>时长</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(track, index) in favorites" :key="track.id">
+                        <td>{{ index + 1 }}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img :src="getCoverUrl(track.id)" class="me-2 cover-img"
+                                     style="width: 40px; height: 40px; object-fit: cover;" @error="handleImageError">
+                                {{ track.title }}
+                            </div>
+                        </td>
+                        <td>{{ track.artist || '未知艺术家' }}</td>
+                        <td>{{ track.album || '未知专辑' }}</td>
+                        <td>{{ formatDuration(track.duration) }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" @click="playTrack(track)" title="播放">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" @click="removeFavorite(track)"
+                                    title="取消收藏">
+                                <i class="bi bi-heart-fill"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-if="favorites.length === 0" class="text-center text-muted py-5">
+                <i class="bi bi-heart" style="font-size: 4rem;"></i>
+                <p class="mt-3">暂无收藏歌曲</p>
+                <p class="small">点击歌曲旁边的 <i class="bi bi-heart"></i> 按钮收藏喜欢的歌曲</p>
+            </div>
+        </div>
+
+        <!-- 最近播放 -->
+        <div v-if="activeTab === 'recent'">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3><i class="bi bi-clock-history"></i> 最近播放</h3>
+                <button class="btn btn-outline-danger btn-sm" @click="clearRecentPlays" v-if="recentPlays.length > 0">
+                    <i class="bi bi-trash"></i> 清空记录
+                </button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>标题</th>
+                        <th>艺术家</th>
+                        <th>专辑</th>
+                        <th>时长</th>
+                        <th>播放时间</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(track, index) in recentPlays" :key="track.id">
+                        <td>{{ index + 1 }}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img :src="getCoverUrl(track.id)" class="me-2 cover-img"
+                                     style="width: 40px; height: 40px; object-fit: cover;" @error="handleImageError">
+                                {{ track.title }}
+                            </div>
+                        </td>
+                        <td>{{ track.artist || '未知艺术家' }}</td>
+                        <td>{{ track.album || '未知专辑' }}</td>
+                        <td>{{ formatDuration(track.duration) }}</td>
+                        <td>{{ formatRelativeTime(track.played_at) }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" @click="playTrack(track)" title="播放">
+                                <i class="bi bi-play-fill"></i>
+                            </button>
+                            <button class="btn btn-sm"
+                                    :class="isFavorited(track.id) ? 'btn-danger' : 'btn-outline-danger'"
+                                    @click="toggleFavorite(track)"
+                                    :title="isFavorited(track.id) ? '取消收藏' : '收藏'">
+                                <i :class="isFavorited(track.id) ? 'bi-heart-fill' : 'bi-heart'"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @click="removeFromRecent(track)"
+                                    title="从记录中移除">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 空状态 -->
+            <div v-if="recentPlays.length === 0" class="text-center text-muted py-5">
+                <i class="bi bi-clock-history" style="font-size: 4rem;"></i>
+                <p class="mt-3">暂无播放记录</p>
+                <p class="small">播放歌曲后会自动记录在这里</p>
+            </div>
+        </div>
+
+        <!-- 管理仪表盘 -->
+        <div v-if="activeTab === 'admin' && user?.role === 'admin'">
+            <h3 class="mb-3">管理仪表盘</h3>
+
+            <!-- 统计卡片 -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ stats.total_tracks }}</h5>
+                            <p class="card-text">总曲目</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ stats.total_users }}</h5>
+                            <p class="card-text">总用户</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ stats.total_plays }}</h5>
+                            <p class="card-text">总播放</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ stats.today_plays }}</h5>
+                            <p class="card-text">今日播放</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 热门曲目 -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>热门曲目</h5>
+                            <select class="form-select form-select-sm" v-model="topPeriod" @change="loadTopTracks"
+                                    style="width: auto;">
+                                <option value="1d">今日</option>
+                                <option value="7d">本周</option>
+                                <option value="30d">本月</option>
+                                <option value="all">全部</option>
+                            </select>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>曲目</th>
+                                    <th>播放次数</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr v-for="(track, idx) in topTracks" :key="track.id">
+                                    <td>{{ idx + 1 }}</td>
+                                    <td>{{ track.artist }} - {{ track.title }}</td>
+                                    <td>{{ track.play_count }}</td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 最近活动 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>最近活动</h5>
+                        </div>
+                        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                            <div v-for="(activity, idx) in activities" :key="idx" class="mb-2 pb-2 border-bottom">
+                                <small class="text-muted">{{ formatDateTime(activity.timestamp) }}</small>
+                                <div>
+                                    <strong>{{ activity.username }}</strong>
+                                    <span :class="getActivityBadge(activity.type)">{{ getActivityText(activity.type)
+                                        }}</span>
+                                    <span v-if="activity.track">{{ activity.track }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 缓存管理 -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>系统管理</h5>
+                        </div>
+                        <div class="card-body">
+                            <button class="btn btn-warning me-2" @click="clearCache">
+                                <i class="bi bi-trash"></i> 清空转码缓存
+                            </button>
+                            <button class="btn btn-success" @click="scanLibrary">
+                                <i class="bi bi-arrow-repeat"></i> 扫描媒体库
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loading" class="text-center py-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="!loading && tracks.length === 0 && activeTab === 'tracks'" class="text-center text-muted py-5">
+            <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+            <p class="mt-3">暂无音乐文件</p>
+            <button class="btn btn-primary" @click="scanLibrary" v-if="user?.role === 'admin'">
+                扫描媒体库
+            </button>
+        </div>
+    </div>
+
+    <!-- 播放器栏 -->
+    <div v-if="isAuthenticated && currentTrack" class="player-bar p-3">
+        <div v-if="isTranscoding" class="text-center text-warning small mt-1">
+            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+            正在转码音频，请稍候...
+        </div>
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-3">
+                    <div class="d-flex align-items-center">
+                        <img :src="getCoverUrl(currentTrack.id)" class="me-2 cover-img"
+                             style="width: 50px; height: 50px;" @error="handleImageError">
+                        <div>
+                            <div class="fw-bold text-white">{{ currentTrack.title }}</div>
+                            <div class="small text-muted">{{ currentTrack.artist }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="d-flex flex-column align-items-center">
+                        <div class="btn-group mb-2">
+                            <button class="btn btn-outline-light btn-sm" @click="previousTrack" title="上一曲">
+                                <i class="bi bi-skip-start-fill"></i>
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" @click="togglePlay" title="播放/暂停">
+                                <i :class="isPlaying ? 'bi-pause-fill' : 'bi-play-fill'"></i>
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" @click="stopTrack" title="停止">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" @click="nextTrack" title="下一曲">
+                                <i class="bi bi-skip-end-fill"></i>
+                            </button>
+
+                            <!-- 播放模式切换按钮 -->
+                            <button class="btn btn-outline-light btn-sm" @click="togglePlayMode"
+                                    :title="'播放模式: ' + playModeText">
+                                <i :class="playModeIcon"></i>
+                            </button>
+
+                            <button class="btn btn-outline-light btn-sm" @click="toggleLyrics"
+                                    :class="{ 'active': showLyrics }" title="歌词">
+                                <i class="bi bi-file-text"></i>
+                            </button>
+                        </div>
+
+                        <div class="d-flex align-items-center w-100">
+                            <span class="small text-white me-2">{{ formatTime(currentTime) }}</span>
+                            <input type="range" class="form-range" v-model="progress" @input="seek" style="flex: 1;"
+                                   min="0" max="100">
+                            <span class="small text-white ms-2">{{ formatTime(duration) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="d-flex align-items-center justify-content-end">
+                        <i class="bi bi-volume-down text-white me-2"></i>
+                        <input type="range" class="form-range" v-model="volume" @input="setVolume" style="width: 100px;"
+                               min="0" max="1" step="0.01">
+                        <i class="bi bi-volume-up text-white ms-2"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 歌词显示 -->
+            <div class="row mt-2" v-if="showLyrics">
+                <div class="col-12">
+                    <div class="d-flex justify-content-end mb-1">
+                        <button class="btn btn-outline-light btn-sm me-2" @click="adjustLyricOffset(-100)">-0.1s
+                        </button>
+                        <span class="text-white me-2">偏移: {{ lyricOffset }}ms</span>
+                        <button class="btn btn-outline-light btn-sm" @click="adjustLyricOffset(100)">+0.1s</button>
+                    </div>
+                    <div class="lyrics-container p-3 rounded" style="max-height: 200px; overflow-y: auto;">
+                        <div v-if="lyrics && lyrics.lines && lyrics.lines.length > 0">
+                            <p v-for="(line, idx) in lyrics.lines"
+                               :key="idx"
+                               :class="['mb-1 lyrics-line', isCurrentLyricLine(line) ? 'active' : 'text-light']">
+                                {{ line.text }}
+                            </p>
+                        </div>
+                        <div v-else class="text-muted text-center">
+                            暂无歌词
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vue 3 -->
+<script src="https://unpkg.com/vue@3.3.11/dist/vue.global.js"></script>
+
+<script>
+    const {createApp, ref, reactive, computed, onMounted, onUnmounted} = Vue;
+
+    const API_BASE = 'http://localhost:8000/api/v1';
+
+    const app = createApp({
+        setup() {
+
+            let refreshTimer = null;
+            // ========== 第一部分：所有状态定义 ==========
+
+            // 认证状态
+            const isAuthenticated = ref(false);
+            const showRegister = ref(false);
+            const user = ref(null);
+            const accessToken = ref(localStorage.getItem('accessToken') || '');
+            const refreshToken = ref(localStorage.getItem('refreshToken') || '');
+
+            // UI状态
+            const loading = ref(false);
+            const error = ref(null);
+            const success = ref(null);
+            const activeTab = ref('tracks');
+
+            // 表单
+            const loginForm = reactive({username: '', password: ''});
+            const registerForm = reactive({
+                email: '', username: '', display_name: '',
+                password: '', confirm_password: ''
+            });
+
+            // 状态
+            const recentPlays = ref([]);
+
+            // 数据
+            const tracks = ref([]);
+            const albums = ref([]);
+            const artists = ref([]);
+            const playlists = ref([]);
+            const favorites = ref([]);
+            const favoritedIds = ref(new Set());
+            const searchQuery = ref('');
+            const searchTimeout = ref(null);
+
+            // 管理员统计
+            const stats = reactive({total_tracks: 0, total_users: 0, total_plays: 0, today_plays: 0});
+            const topTracks = ref([]);
+            const topPeriod = ref('7d');
+            const activities = ref([]);
+
+            // 播放器状态
+            const audio = ref(null);
+            const currentTrack = ref(null);
+            const isPlaying = ref(false);
+            const currentTime = ref(0);
+            const duration = ref(0);
+            const volume = ref(0.8);
+            const queue = ref([]);
+            const queueIndex = ref(-1);
+            const showLyrics = ref(false);
+            const lyrics = ref(null);
+            const currentBlobUrl = ref(null);
+            const currentPlayingId = ref(null);
+            const isTranscoding = ref(false);
+            const lyricOffset = ref(0);
+
+            // 播放模式
+            const playMode = ref('sequential');
+            const playModeIcon = computed(() => {
+                const icons = {'sequential': 'bi-repeat', 'random': 'bi-shuffle', 'single': 'bi-repeat-1'};
+                return icons[playMode.value] || 'bi-arrow-repeat';
+            });
+            const playModeText = computed(() => {
+                const texts = {'sequential': '顺序播放', 'random': '随机播放', 'single': '单曲循环'};
+                return texts[playMode.value] || '顺序播放';
+            });
+
+            // 播放列表相关
+            const showCreatePlaylist = ref(false);
+            const currentPlaylist = ref(null);
+            const playlistTracks = ref([]);
+            const newPlaylist = reactive({name: '', description: '', is_public: false});
+            const pendingTrack = ref(null);
+
+            // 会话
+            const sessionId = ref('session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+
+            // 计算属性
+            const progress = computed({
+                get: () => duration.value ? (currentTime.value / duration.value) * 100 : 0,
+                set: (value) => {
+                    if (audio.value) audio.value.currentTime = (value / 100) * duration.value;
+                }
+            });
+
+            const startTokenRefreshTimer = () => {
+                if (refreshTimer) clearInterval(refreshTimer);
+
+                refreshTimer = setInterval(async () => {
+                    if (isAuthenticated.value && refreshToken.value) {
+                        console.log('Auto-refreshing token...');
+                        await refreshAccessToken();
+                    }
+                }, 30 * 60 * 1000); // 30 分钟
+            };
+
+            // ========== 第二部分：工具函数 ==========
+
+            const formatDuration = (seconds) => {
+                if (!seconds) return '--:--';
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const formatTime = (seconds) => {
+                if (!seconds || isNaN(seconds)) return '0:00';
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            // 格式化具体日期
+            const formatDate = (isoString) => {
+                if (!isoString) return '';
+                const date = new Date(isoString);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            // 格式化具体时间（包含时分）
+            const formatDateTime = (isoString) => {
+                if (!isoString) return '';
+                const date = new Date(isoString);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}`;
+            };
+
+            const getCoverUrl = (trackId) => {
+                return `${API_BASE}/media/cover/${trackId}?size=sm`;
+            };
+
+            const handleImageError = (e) => {
+                e.target.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 40 40\'%3E%3Crect width=\'40\' height=\'40\' fill=\'%23e9ecef\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%236c757d\' font-size=\'12\'%3E♪%3C/text%3E%3C/svg%3E';
+            };
+
+            const getActivityText = (type) => {
+                const texts = {
+                    'play_start': '开始播放',
+                    'play_end': '播放结束',
+                    'pause': '暂停',
+                    'seek': '跳转',
+                    'download': '下载'
+                };
+                return texts[type] || type;
+            };
+
+            const getActivityBadge = (type) => {
+                const badges = {
+                    'play_start': 'badge bg-success',
+                    'play_end': 'badge bg-secondary',
+                    'pause': 'badge bg-warning',
+                    'seek': 'badge bg-info',
+                    'download': 'badge bg-primary'
+                };
+                return badges[type] || 'badge bg-light text-dark';
+            };
+
+            // ========== 第三部分：API 基础函数 ==========
+
+            const apiFetch = async (endpoint, options = {}) => {
+                if (!accessToken.value) {
+                    throw new Error('Not authenticated');
+                }
+
+                const makeRequest = async (token) => {
+                    const headers = {
+                        'Authorization': `Bearer ${token}`,
+                        ...options.headers
+                    };
+
+                    if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+                        headers['Content-Type'] = 'application/json';
+                        options.body = JSON.stringify(options.body);
+                    }
+
+                    return await fetch(`${API_BASE}${endpoint}`, {
+                        ...options,
+                        headers
+                    });
+                };
+
+                // 第一次尝试
+                let response = await makeRequest(accessToken.value);
+
+                // 如果返回 401，尝试刷新 token
+                if (response.status === 401) {
+                    console.log('Token expired, attempting refresh...');
+
+                    const refreshed = await refreshAccessToken();
+                    if (refreshed) {
+                        console.log('Token refreshed, retrying request...');
+                        // 使用新 token 重试
+                        response = await makeRequest(accessToken.value);
+                    } else {
+                        console.log('Token refresh failed, logging out...');
+                        logout();
+                        throw new Error('Session expired');
+                    }
+                }
+
+                return response;
+            };
+
+            const refreshAccessToken = async () => {
+                if (!refreshToken.value) {
+                    console.log('No refresh token available');
+                    logout();
+                    return false;
+                }
+
+                try {
+                    console.log('Refreshing token...');
+                    const response = await fetch(`${API_BASE}/auth/refresh`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({refresh_token: refreshToken.value})
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        accessToken.value = data.access_token;
+                        refreshToken.value = data.refresh_token;
+
+                        localStorage.setItem('accessToken', accessToken.value);
+                        localStorage.setItem('refreshToken', refreshToken.value);
+
+                        console.log('Token refreshed successfully');
+                        return true;
+                    } else {
+                        console.log('Refresh token invalid');
+                        logout();
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Refresh token error:', error);
+                    logout();
+                    return false;
+                }
+            };
+
+            const sendEvent = async (type, trackId = null, posMs = null) => {
+                const track_id = trackId || currentTrack.value?.id;
+                if (!track_id) return;
+
+                const position = posMs ?? (audio.value ? Math.floor(audio.value.currentTime * 1000) : 0);
+
+                try {
+                    // 使用 apiFetch 而不是直接 fetch，这样会自动处理 token 刷新
+                    await apiFetch('/analytics/events', {
+                        method: 'POST',
+                        body: {type, track_id, pos_ms: position, session_id: sessionId.value}
+                    });
+                } catch (error) {
+                    // 静默失败，不影响用户体验
+                    console.debug('Event send failed:', error);
+                }
+            };
+
+            // ========== 第四部分：数据加载函数（使用 function 声明）==========
+
+            async function loadTracks() {
+                loading.value = true;
+                try {
+                    const params = new URLSearchParams({page: 1, page_size: 100, sort_by: 'title', sort_order: 'asc'});
+                    if (searchQuery.value) params.append('search', searchQuery.value);
+
+                    const response = await apiFetch(`/tracks?${params}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        tracks.value = data.items;
+                    }
+                } catch (err) {
+                    console.error('Load tracks error:', err);
+                } finally {
+                    loading.value = false;
+                }
+            }
+
+            async function loadAlbums() {
+                loading.value = true;
+                try {
+                    const params = new URLSearchParams({page: 1, page_size: 50});
+                    const response = await apiFetch(`/albums?${params}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        albums.value = data.items;
+                    }
+                } catch (err) {
+                    console.error('Load albums error:', err);
+                } finally {
+                    loading.value = false;
+                }
+            }
+
+            async function loadArtists() {
+                loading.value = true;
+                try {
+                    const params = new URLSearchParams({page: 1, page_size: 50});
+                    const response = await apiFetch(`/artists?${params}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        artists.value = data.items;
+                    }
+                } catch (err) {
+                    console.error('Load artists error:', err);
+                } finally {
+                    loading.value = false;
+                }
+            }
+
+            async function loadPlaylists() {
+                try {
+                    const response = await apiFetch('/playlists');
+                    if (response.ok) {
+                        playlists.value = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Load playlists error:', error);
+                }
+            }
+
+            async function loadAllFavorites() {
+                try {
+                    const response = await apiFetch('/favorites');
+                    if (response.ok) {
+                        favorites.value = await response.json();
+                        favoritedIds.value = new Set(favorites.value.map(t => t.id));
+                    }
+                } catch (error) {
+                    console.error('Load favorites error:', error);
+                }
+            }
+
+            async function loadAdminStats() {
+                try {
+                    const [overviewRes, topRes, activityRes] = await Promise.all([
+                        apiFetch('/admin/stats/overview'),
+                        apiFetch(`/admin/stats/top-tracks?period=${topPeriod.value}&limit=10`),
+                        apiFetch('/admin/stats/recent-activity?limit=20')
+                    ]);
+
+                    if (overviewRes.ok) Object.assign(stats, await overviewRes.json());
+                    if (topRes.ok) {
+                        const data = await topRes.json();
+                        topTracks.value = data.tracks;
+                    }
+                    if (activityRes.ok) {
+                        const data = await activityRes.json();
+                        activities.value = data.activities;
+                    }
+                } catch (error) {
+                    console.error('Load admin stats error:', error);
+                }
+            }
+
+            async function loadTopTracks() {
+                try {
+                    const response = await apiFetch(`/admin/stats/top-tracks?period=${topPeriod.value}&limit=10`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        topTracks.value = data.tracks;
+                    }
+                } catch (error) {
+                    console.error('Load top tracks error:', error);
+                }
+            }
+
+            // ========== 第五部分：认证函数 ==========
+
+            function logout() {
+                if (refreshTimer) {
+                    clearInterval(refreshTimer);
+                    refreshTimer = null;
+                }
+                isAuthenticated.value = false;
+                user.value = null;
+                accessToken.value = '';
+                refreshToken.value = '';
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                showRegister.value = false;
+                if (audio.value) {
+                    audio.value.pause();
+                    if (currentBlobUrl.value) URL.revokeObjectURL(currentBlobUrl.value);
+                }
+            }
+
+            async function fetchUser() {
+                try {
+                    const response = await apiFetch('/auth/me');
+                    if (response.ok) {
+                        user.value = await response.json();
+                        isAuthenticated.value = true;
+                        await loadTracks();
+                        await loadAllFavorites();
+                    } else {
+                        logout();
+                    }
+                } catch (err) {
+                    console.error('Fetch user error:', err);
+                    logout();
+                }
+            }
+
+            async function init() {
+                if (accessToken.value) {
+                    await fetchUser();
+                    startTokenRefreshTimer();
+                }
+            }
+
+            const handleLogin = async () => {
+                loading.value = true;
+                error.value = null;
+
+                try {
+                    const response = await fetch(`${API_BASE}/auth/login`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(loginForm)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        accessToken.value = data.access_token;
+                        refreshToken.value = data.refresh_token;
+                        localStorage.setItem('accessToken', accessToken.value);
+                        localStorage.setItem('refreshToken', refreshToken.value);
+                        await fetchUser();
+                        startTokenRefreshTimer();
+                    } else {
+                        const err = await response.json();
+                        error.value = err.detail || '登录失败';
+                    }
+                } catch (err) {
+                    error.value = '网络错误，请稍后重试';
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const handleRegister = async () => {
+                error.value = null;
+                success.value = null;
+
+                if (registerForm.password !== registerForm.confirm_password) {
+                    error.value = '两次输入的密码不一致';
+                    return;
+                }
+
+                loading.value = true;
+
+                try {
+                    const response = await fetch(`${API_BASE}/auth/register`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(registerForm)
+                    });
+
+                    if (response.ok) {
+                        success.value = '注册成功！';
+                        setTimeout(() => {
+                            showRegister.value = false;
+                            loginForm.username = registerForm.username;
+                            loginForm.password = '';
+                        }, 2000);
+                    } else {
+                        const err = await response.json();
+                        error.value = err.detail || '注册失败';
+                    }
+                } catch (err) {
+                    error.value = '网络错误，请稍后重试';
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const handleSearch = () => {
+                clearTimeout(searchTimeout.value);
+                searchTimeout.value = setTimeout(() => {
+                    if (activeTab.value === 'tracks') loadTracks();
+                }, 300);
+            };
+
+            // ========== 第六部分：播放器核心函数 ==========
+
+            const setQueue = (tracksList, startIndex = 0) => {
+                if (!tracksList || tracksList.length === 0) {
+                    console.warn('setQueue: empty tracks list');
+                    return;
+                }
+
+                queue.value = [...tracksList];
+                queueIndex.value = Math.max(0, Math.min(startIndex, tracksList.length - 1));
+                console.log('Queue set:', queue.value.length, 'tracks, starting at', queueIndex.value);
+            };
+
+            const playTrack = async (track) => {
+                console.log('Playing track:', track.title, 'Format:', track.format);
+
+                currentTrack.value = track;
+                currentPlayingId.value = track.id;
+
+                // 关键修复：如果当前没有队列，或者队列中不包含这首歌，将当前歌曲列表设置为队列
+                if (queue.value.length === 0 || !queue.value.find(t => t.id === track.id)) {
+                    // 根据当前活动的标签页设置队列
+                    if (activeTab.value === 'tracks' && tracks.value.length > 0) {
+                        setQueue(tracks.value, tracks.value.findIndex(t => t.id === track.id));
+                    } else if (activeTab.value === 'favorites' && favorites.value.length > 0) {
+                        setQueue(favorites.value, favorites.value.findIndex(t => t.id === track.id));
+                    } else if (activeTab.value === 'recent' && recentPlays.value.length > 0) {
+                        setQueue(recentPlays.value, recentPlays.value.findIndex(t => t.id === track.id));
+                    } else if (currentPlaylist.value && playlistTracks.value.length > 0) {
+                        setQueue(playlistTracks.value, playlistTracks.value.findIndex(t => t.id === track.id));
+                    } else {
+                        // 默认只放这一首歌
+                        queue.value = [track];
+                        queueIndex.value = 0;
+                    }
+                } else {
+                    // 队列中已有这首歌，更新索引
+                    queueIndex.value = queue.value.findIndex(t => t.id === track.id);
+                }
+
+                console.log('Queue length:', queue.value.length, 'Current index:', queueIndex.value);
+
+                const useTranscode = track.format === 'flac';
+                const streamUrl = `/media/stream/${track.id}${useTranscode ? '?transcode=true' : ''}`;
+
+                if (useTranscode) {
+                    isTranscoding.value = true;
+                }
+
+                try {
+                    if (audio.value) {
+                        audio.value.pause();
+                        if (currentBlobUrl.value) {
+                            URL.revokeObjectURL(currentBlobUrl.value);
+                            currentBlobUrl.value = null;
+                        }
+                    }
+
+                    const response = await apiFetch(streamUrl);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const blob = await response.blob();
+                    if (blob.size === 0) throw new Error('Empty audio data');
+
+                    const blobUrl = URL.createObjectURL(blob);
+                    currentBlobUrl.value = blobUrl;
+
+                    audio.value = new Audio();
+                    audio.value.volume = volume.value;
+
+                    audio.value.addEventListener('loadedmetadata', () => {
+                        duration.value = audio.value.duration;
+                    });
+                    audio.value.addEventListener('timeupdate', () => {
+                        currentTime.value = audio.value.currentTime;
+                    });
+                    audio.value.addEventListener('ended', () => {
+                        sendEvent('play_end');
+                        isPlaying.value = false;
+                        currentPlayingId.value = null;
+                        nextTrack();
+                    });
+                    audio.value.addEventListener('error', (e) => {
+                        console.error('Audio error:', audio.value.error);
+                        isTranscoding.value = false;
+                        currentPlayingId.value = null;
+                        alert('播放失败，请重试或下载后播放');
+                    });
+                    audio.value.addEventListener('play', () => {
+                        isPlaying.value = true;
+                        isTranscoding.value = false;
+                        sendEvent('play_start', track.id, 0);
+                    });
+                    audio.value.addEventListener('pause', () => {
+                        sendEvent('pause');
+                    });
+
+                    audio.value.src = blobUrl;
+                    await audio.value.play();
+
+                    isPlaying.value = true;
+                    isTranscoding.value = false;
+
+                    if (!queue.value.find(t => t.id === track.id)) {
+                        queue.value.push(track);
+                        queueIndex.value = queue.value.length - 1;
+                    } else {
+                        queueIndex.value = queue.value.findIndex(t => t.id === track.id);
+                    }
+
+                    if (showLyrics.value) loadLyrics();
+
+                } catch (error) {
+                    console.error('Play error:', error);
+                    isTranscoding.value = false;
+                    currentPlayingId.value = null;
+
+                    const confirm = window.confirm(`播放失败: ${error.message}\n\n是否下载文件？`);
+                    if (confirm) await downloadTrack(track);
+                }
+            };
+
+            const togglePlay = () => {
+                if (!audio.value) return;
+                if (isPlaying.value) {
+                    audio.value.pause();
+                    isPlaying.value = false;
+                } else {
+                    audio.value.play();
+                    isPlaying.value = true;
+                }
+            };
+
+            const stopTrack = () => {
+                if (audio.value) {
+                    sendEvent('play_end');
+                    audio.value.pause();
+                    audio.value.currentTime = 0;
+                    isPlaying.value = false;
+                }
+            };
+
+            const nextTrack = () => {
+                console.log('nextTrack called, queue length:', queue.value.length, 'current index:', queueIndex.value, 'playMode:', playMode.value);
+                if (queue.value.length === 0) {
+                    console.log('Queue is empty');
+                    return;
+                }
+
+                let nextIndex;
+                switch (playMode.value) {
+                    case 'random':
+                        nextIndex = Math.floor(Math.random() * queue.value.length);
+                        break;
+                    case 'single':
+                        if (currentTrack.value) {
+                            playTrack(currentTrack.value);
+                        }
+                        return;
+                    default:
+                        nextIndex = (queueIndex.value + 1) % queue.value.length;
+                }
+                console.log('Next index:', nextIndex);
+                queueIndex.value = nextIndex;
+                playTrack(queue.value[nextIndex]);
+            };
+
+            const previousTrack = () => {
+                if (queue.value.length === 0) return;
+
+                let prevIndex;
+                switch (playMode.value) {
+                    case 'random':
+                        prevIndex = Math.floor(Math.random() * queue.value.length);
+                        break;
+                    default:
+                        prevIndex = queueIndex.value > 0 ? queueIndex.value - 1 : queue.value.length - 1;
+                }
+
+                queueIndex.value = prevIndex;
+                playTrack(queue.value[prevIndex]);
+            };
+
+            const setVolume = () => {
+                if (audio.value) audio.value.volume = volume.value;
+            };
+
+            const togglePlayMode = () => {
+                const modes = ['sequential', 'random', 'single'];
+                const idx = modes.indexOf(playMode.value);
+                playMode.value = modes[(idx + 1) % modes.length];
+            };
+
+            const downloadTrack = async (track) => {
+                try {
+                    const response = await apiFetch(`/media/download/${track.id}`);
+                    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${track.artist || 'Unknown'} - ${track.title}.${track.format || 'mp3'}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+                    sendEvent('download', track.id);
+                } catch (error) {
+                    console.error('Download error:', error);
+                    alert('下载失败: ' + error.message);
+                }
+            };
+
+            // ========== 第七部分：歌词功能 ==========
+
+            async function loadLyrics() {
+                if (!currentTrack.value) return;
+
+                try {
+                    let url = `/lyrics/${currentTrack.value.id}`;
+                    if (lyricOffset.value !== 0) url += `?offset=${lyricOffset.value}`;
+
+                    const response = await apiFetch(url);
+                    if (response.ok) {
+                        lyrics.value = await response.json();
+                    } else {
+                        lyrics.value = null;
+                    }
+                } catch (err) {
+                    console.error('Load lyrics error:', err);
+                    lyrics.value = null;
+                }
+            }
+
+            const toggleLyrics = () => {
+                showLyrics.value = !showLyrics.value;
+                if (showLyrics.value && currentTrack.value) loadLyrics();
+            };
+
+            const adjustLyricOffset = (delta) => {
+                lyricOffset.value += delta;
+                loadLyrics();
+            };
+
+            const isCurrentLyricLine = (line) => {
+                if (!line.time_ms && line.time_ms !== 0) return false;
+                const currentTimeMs = currentTime.value * 1000;
+                const currentIndex = lyrics.value?.lines?.findIndex(l => l === line);
+                const nextLine = lyrics.value?.lines?.[currentIndex + 1];
+                if (nextLine && nextLine.time_ms !== null) {
+                    return currentTimeMs >= line.time_ms && currentTimeMs < nextLine.time_ms;
+                }
+                return currentTimeMs >= line.time_ms;
+            };
+
+            // ========== 第八部分：收藏功能 ==========
+
+            const isFavorited = (trackId) => favoritedIds.value.has(trackId);
+
+            const toggleFavorite = async (track) => {
+                const isFav = isFavorited(track.id);
+                try {
+                    const method = isFav ? 'DELETE' : 'POST';
+                    const response = await apiFetch(`/favorites/${track.id}`, {method});
+                    if (response.ok) {
+                        if (isFav) {
+                            favoritedIds.value.delete(track.id);
+                            favorites.value = favorites.value.filter(t => t.id !== track.id);
+                        } else {
+                            favoritedIds.value.add(track.id);
+                            favorites.value.unshift({...track, favorited_at: new Date().toISOString()});
+                        }
+                    }
+                } catch (error) {
+                    console.error('Toggle favorite error:', error);
+                }
+            };
+
+            const removeFavorite = (track) => toggleFavorite(track);
+
+            // ========== 第九部分：播放列表功能 ==========
+
+            const createPlaylist = async () => {
+                if (!newPlaylist.name.trim()) {
+                    alert('请输入播放列表名称');
+                    return;
+                }
+
+                try {
+                    const response = await apiFetch('/playlists', {
+                        method: 'POST',
+                        body: {
+                            name: newPlaylist.name.trim(),
+                            description: newPlaylist.description?.trim() || null,
+                            is_public: newPlaylist.is_public
+                        }
+                    });
+
+                    if (response.ok) {
+                        showCreatePlaylist.value = false;
+                        newPlaylist.name = '';
+                        newPlaylist.description = '';
+                        newPlaylist.is_public = false;
+                        await loadPlaylists();
+                        alert('播放列表创建成功');
+                    } else {
+                        const error = await response.json();
+                        alert(error.detail || '创建失败');
+                    }
+                } catch (error) {
+                    console.error('Create playlist error:', error);
+                    alert('创建失败，请稍后重试');
+                }
+            };
+
+            const viewPlaylist = async (playlist) => {
+                try {
+                    const response = await apiFetch(`/playlists/${playlist.id}`);
+                    if (response.ok) {
+                        currentPlaylist.value = await response.json();
+                        playlistTracks.value = currentPlaylist.value.tracks;
+                    }
+                } catch (error) {
+                    console.error('View playlist error:', error);
+                }
+            };
+
+            const deletePlaylist = async (playlist) => {
+                if (!confirm(`确定删除播放列表 "${playlist.name}" 吗？`)) return;
+
+                try {
+                    const response = await apiFetch(`/playlists/${playlist.id}`, {method: 'DELETE'});
+
+                    if (response.ok) {
+                        // 如果当前正在查看这个播放列表，清空视图
+                        if (currentPlaylist.value?.id === playlist.id) {
+                            currentPlaylist.value = null;
+                            playlistTracks.value = [];
+                        }
+
+                        // 刷新播放列表
+                        await loadPlaylists();
+
+                        alert('播放列表已删除');
+                    } else {
+                        const error = await response.json();
+                        alert(error.detail || '删除失败');
+                    }
+                } catch (error) {
+                    console.error('Delete playlist error:', error);
+                    alert('删除失败');
+                }
+            };
+
+            const addToPlaylist = async (playlistId) => {
+                if (!pendingTrack.value) return;
+
+                try {
+                    const response = await apiFetch(`/playlists/${playlistId}/tracks`, {
+                        method: 'POST',
+                        body: {track_id: pendingTrack.value.id}
+                    });
+
+                    if (response.ok) {
+                        const pl = playlists.value.find(p => p.id === playlistId);
+
+                        // 更新播放列表的歌曲数量
+                        if (pl) {
+                            pl.track_count = (pl.track_count || 0) + 1;
+                        }
+
+                        // 如果当前正在查看这个播放列表，刷新歌曲列表
+                        if (currentPlaylist.value?.id === playlistId) {
+                            await viewPlaylist(currentPlaylist.value);
+                        }
+
+                        alert(`已添加到 "${pl?.name}"`);
+                        pendingTrack.value = null;
+                    } else {
+                        const error = await response.json();
+                        alert(error.detail || '添加失败');
+                    }
+                } catch (error) {
+                    console.error('Add to playlist error:', error);
+                    alert('添加失败');
+                }
+            };
+
+            // 快速创建播放列表
+            const quickCreatePlaylist = async () => {
+                console.log('quickCreatePlaylist called');
+                const name = prompt('请输入新播放列表名称：');
+                console.log('Input name:', name);
+                if (!name || !name.trim()) return;
+
+                try {
+                    const response = await apiFetch('/playlists', {
+                        method: 'POST',
+                        body: {name: name.trim(), is_public: false}
+                    });
+
+                    if (response.ok) {
+                        await loadPlaylists();
+                        alert(`播放列表 "${name}" 已创建`);
+                    } else {
+                        const error = await response.json();
+                        alert(error.detail || '创建失败');
+                    }
+                } catch (error) {
+                    console.error('Create playlist error:', error);
+                    alert('创建失败，请稍后重试');
+                }
+            };
+
+            const playPlaylist = (playlist) => {
+                if (playlistTracks.value.length === 0) {
+                    alert('播放列表为空');
+                    return;
+                }
+                setQueue(playlistTracks.value, 0);
+                playTrack(playlistTracks.value[0]);
+            };
+
+            const playFromPlaylist = (track) => {
+                const index = playlistTracks.value.findIndex(t => t.id === track.id);
+                if (index !== -1) {
+                    setQueue(playlistTracks.value, index);
+                    playTrack(track);
+                }
+            };
+
+            const removeFromPlaylist = async (track) => {
+                if (!currentPlaylist.value) return;
+
+                try {
+                    const response = await apiFetch(`/playlists/${currentPlaylist.value.id}/tracks/${track.id}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        // 从当前显示的列表中移除
+                        playlistTracks.value = playlistTracks.value.filter(t => t.id !== track.id);
+
+                        // 更新当前播放列表的歌曲数量
+                        if (currentPlaylist.value) {
+                            currentPlaylist.value.track_count = playlistTracks.value.length;
+                        }
+
+                        // 刷新播放列表（更新侧边栏或列表中的计数）
+                        await loadPlaylists();
+
+                        // 如果播放列表为空，可以选择返回列表视图
+                        if (playlistTracks.value.length === 0) {
+                            // 可选：自动返回播放列表视图
+                            // currentPlaylist.value = null;
+                        }
+                    } else {
+                        const error = await response.json();
+                        alert(error.detail || '删除失败');
+                    }
+                } catch (error) {
+                    console.error('Remove from playlist error:', error);
+                    alert('删除失败');
+                }
+            };
+            // ========== 最近播放 ===========
+            // 加载最近播放
+            async function loadRecentPlays() {
+                try {
+                    const response = await apiFetch('/recent?limit=50');
+                    if (response.ok) {
+                        recentPlays.value = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Load recent plays error:', error);
+                }
+            }
+
+            // 清空最近播放
+            const clearRecentPlays = async () => {
+                if (!confirm('确定清空所有播放记录吗？')) return;
+
+                try {
+                    const response = await apiFetch('/recent/clear', {method: 'DELETE'});
+
+                    if (response.ok) {
+                        recentPlays.value = [];
+                        alert('已清空记录');
+                    } else {
+                        const error = await response.text();
+                        console.error('Clear failed:', error);
+                        alert('清空失败');
+                    }
+                } catch (error) {
+                    console.error('Clear recent plays error:', error);
+                    alert('清空失败');
+                }
+            };
+
+            // 从最近播放中移除单曲
+            const removeFromRecent = async (track) => {
+                try {
+                    const response = await apiFetch(`/recent/${track.id}`, {method: 'DELETE'});
+                    if (response.ok) {
+                        recentPlays.value = recentPlays.value.filter(t => t.id !== track.id);
+                    }
+                } catch (error) {
+                    console.error('Remove from recent error:', error);
+                }
+            };
+            // ========== 第十部分：其他功能 ==========
+
+            // 格式化相对时间（考虑时区）
+            const formatRelativeTime = (isoString) => {
+                if (!isoString) return '';
+
+                // 解析 UTC 时间字符串
+                const date = new Date(isoString);
+                const now = new Date();
+
+                // 计算时间差（毫秒）
+                const diff = now - date;
+
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(diff / 3600000);
+                const days = Math.floor(diff / 86400000);
+
+                if (minutes < 1) return '刚刚';
+                if (minutes < 60) return `${minutes}分钟前`;
+                if (hours < 24) return `${hours}小时前`;
+                if (days < 7) return `${days}天前`;
+
+                // 超过7天显示具体日期
+                return formatDate(isoString);
+            };
+            const scanLibrary = async () => {
+                try {
+                    const response = await apiFetch('/library/scan', {method: 'POST'});
+                    if (response.ok) {
+                        alert('扫描完成');
+                        await loadTracks();
+                    }
+                } catch (err) {
+                    console.error('Scan error:', err);
+                    alert('扫描失败');
+                }
+            };
+
+            const clearCache = async () => {
+                if (!confirm('确定清空转码缓存吗？')) return;
+                try {
+                    const response = await apiFetch('/system/cache/clear', {method: 'POST'});
+                    if (response.ok) alert('缓存已清空');
+                } catch (error) {
+                    console.error('Clear cache error:', error);
+                }
+            };
+
+            const viewAlbum = (album) => {
+                activeTab.value = 'tracks';
+                searchQuery.value = album.name;
+                loadTracks();
+            };
+
+            const viewArtist = (artist) => {
+                activeTab.value = 'tracks';
+                searchQuery.value = artist.name;
+                loadTracks();
+            };
+
+            const preparePlaylistMenu = (track) => {
+                pendingTrack.value = track;
+                if (playlists.value.length === 0) loadPlaylists();
+            };
+
+            // ========== 第十一部分：生命周期 ==========
+
+            onMounted(() => {
+                init();
+            });
+
+            onUnmounted(() => {
+                if (audio.value) audio.value.pause();
+                if (currentBlobUrl.value) URL.revokeObjectURL(currentBlobUrl.value);
+            });
+
+            // ========== 第十二部分：返回 ==========
+
+            return {
+                // 状态
+                isAuthenticated, showRegister, user, loading, error, success, activeTab,
+                loginForm, registerForm, tracks, albums, artists, playlists, favorites,
+                searchQuery, currentTrack, isPlaying, currentTime, duration, volume, progress,
+                showLyrics, lyrics, lyricOffset, playMode, playModeIcon, playModeText,
+                showCreatePlaylist, currentPlaylist, playlistTracks, newPlaylist, pendingTrack,
+                isTranscoding, currentPlayingId, stats, topTracks, topPeriod, activities,
+                recentPlays,
+
+                // 方法
+                handleLogin, handleRegister, logout,
+                loadTracks, loadAlbums, loadArtists, loadPlaylists, loadAllFavorites,
+                loadAdminStats, loadTopTracks,
+                handleSearch, scanLibrary, clearCache,
+                getCoverUrl, handleImageError,
+                playTrack, downloadTrack, togglePlay, stopTrack, nextTrack, previousTrack,
+                togglePlayMode, setVolume, seek: () => {
+                },
+                toggleLyrics, adjustLyricOffset, isCurrentLyricLine, loadLyrics,
+                formatDuration, formatTime, formatDate, formatDateTime,
+                getActivityText, getActivityBadge,
+                isFavorited, toggleFavorite, removeFavorite,
+                createPlaylist, viewPlaylist, deletePlaylist,
+                addToPlaylist, quickCreatePlaylist, preparePlaylistMenu,
+                playPlaylist, playFromPlaylist, removeFromPlaylist,
+                viewAlbum, viewArtist, loadRecentPlays, clearRecentPlays, removeFromRecent, formatRelativeTime,
+            };
+        }
+    });
+
+    app.mount('#app');
+</script>
+</body>
+</html>
