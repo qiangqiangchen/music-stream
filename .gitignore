@@ -48,3 +48,4 @@ backend/bin/
 # Frontend
 frontend/node_modules/
 " > .gitignore
+/frontend/index.html.bak
