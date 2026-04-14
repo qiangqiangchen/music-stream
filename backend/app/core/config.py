@@ -1,9 +1,16 @@
 """Application configuration."""
 from typing import Optional
+
+from loguru import logger
 from pydantic_settings import BaseSettings  # 修正导入
 from pathlib import Path
 
+
 class Settings(BaseSettings):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        logger.info(f"JWT_SECRET (first 10 chars): {self.JWT_SECRET[:10]}...")
+
     # Application
     APP_NAME: str = "Music Stream"
     VERSION: str = "0.1.0"
@@ -45,6 +52,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"  # 忽略额外的环境变量
+
 
 settings = Settings()
 

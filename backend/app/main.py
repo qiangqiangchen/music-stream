@@ -1,6 +1,6 @@
 """FastAPI application entry point."""
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -10,8 +10,11 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.database import init_db
 from app.api import api_router
+
+
 from app.core.limiter import limiter
 from slowapi.errors import RateLimitExceeded
+from starlette.websockets import WebSocket
 
 # Configure logging
 logger.remove()
@@ -114,9 +117,23 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
-
+from app.api.v1 import chat
+app.include_router(chat.router, prefix="/api/v1")
+# print("Registered routes:", [route.path for route in app.routes])
+print("=" * 50)
+print("Registered routes:")
+for route in app.routes:
+    print(f"  {route.path} - {route.methods if hasattr(route, 'methods') else 'WEBSOCKET'}")
+print("=" * 50)
 
 @app.get("/healthz")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "version": settings.VERSION}
+
+
+@app.websocket("/test-ws")
+async def test_websocket(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_text("Hello!")
+    await websocket.close()

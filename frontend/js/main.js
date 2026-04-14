@@ -22,7 +22,8 @@
             AdminPanel: AdminPanel,
             PlayerBar: PlayerBar,
             CreatePlaylistModal: CreatePlaylistModal,
-            ShortcutsModal: ShortcutsModal
+            ShortcutsModal: ShortcutsModal,
+            ChatRoom: ChatRoom,
         },
 
         setup: function () {
@@ -34,6 +35,23 @@
             var favM = useFavorites(auth.apiFetch);
             var plM = usePlaylists(auth.apiFetch);
             var recentM = useRecentPlays(auth.apiFetch);
+
+
+            // 添加聊天模块
+            var chat = useChat(auth);
+            var showChat = ref(false);
+
+            // 打开聊天室
+            function handleOpenChat() {
+                showChat.value = true;
+                chat.openChatRoom();  // 标记聊天室打开，清空未读
+            }
+
+            // 关闭聊天室
+            function handleCloseChat() {
+                showChat.value = false;
+                chat.closeChatRoom();
+            }
 
             /* ══════════════════════════════════════
                频谱：完全在 setup 内管理，不依赖 useSpectrum
@@ -418,6 +436,13 @@
                 }, 2000);
             }
 
+            // 重写登出函数
+            var originalLogout = auth.logout;
+            auth.logout = function () {
+                chat.disconnect();
+                originalLogout.call(auth);
+            };
+
             /* ── 生命周期 ── */
             onMounted(async function () {
                 await auth.init();
@@ -425,6 +450,10 @@
                     await loadTracks();
                     await favM.loadFavorites();
                     await plM.loadPlaylists();
+                    // 延迟一点连接，确保 token 已保存
+                    setTimeout(function () {
+                        chat.connect();
+                    }, 100);
                 }
                 window.addEventListener('keydown', handleKeydown);
                 window.addEventListener('resize', specHandleResize);
@@ -437,6 +466,7 @@
                 window.removeEventListener('keydown', handleKeydown);
                 window.removeEventListener('resize', specHandleResize);
             });
+
 
             /* ── 暴露给模板 ── */
             return {
@@ -519,6 +549,23 @@
                 onLyricWheel: lyricsM.onWheel,
                 onLyricTouchStart: lyricsM.onTouchStart,
                 onLyricTouchMove: lyricsM.onTouchMove,
+
+                // 聊天
+                showChat,
+                chatIsConnected: chat.isConnected,
+                chatMessages: chat.messages,
+                chatOnlineUsers: chat.onlineUsers,
+                chatOnlineCount: chat.onlineCount,
+                chatUnreadCount: chat.unreadCount,
+                chatInputMessage: chat.inputMessage,
+                chatFormatTime: chat.formatChatTime,
+                chatGetMessageClass: chat.getMessageClass,
+                handleOpenChat,
+                handleCloseChat,
+                chatSend: chat.sendMessage,
+                chatCurrentUserId: function () {
+                    return auth.user.value?.id;
+                },
             };
         },
 
@@ -698,7 +745,22 @@
             '                       @cancel="showCreatePlaylist = false" />',
 
             '  <ShortcutsModal v-if="showShortcuts" @close="showShortcuts = false" />',
-
+            '  <ChatRoom',
+            '    :isOpen="showChat"',
+            '    :isConnected="chatIsConnected"',
+            '    :messages="chatMessages"',
+            '    :onlineUsers="chatOnlineUsers"',
+            '    :onlineCount="chatOnlineCount"',
+            '    :unreadCount="chatUnreadCount"',
+            '    :inputMessage="chatInputMessage"',
+            '    :currentUserId="chatCurrentUserId()"',
+            '    :formatChatTime="chatFormatTime"',
+            '    :getMessageClass="chatGetMessageClass"',
+            '    @open="handleOpenChat"',
+            '    @close="handleCloseChat"',
+            '    @send="chatSend"',
+            '    @update:inputMessage="v => chatInputMessage = v"',
+            '  />',
             '</div>'
         ].join('\n')
     };
